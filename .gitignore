@@ -4,3 +4,4 @@ __pycache__/
 processed_pdfs/
 metadata/*.json
 vector_store/
+all-MiniLM-L6-v2/
