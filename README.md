@@ -87,13 +87,12 @@ The platform enables organizations to **extract intelligence from multilingual P
 ## 📁 Repository Documentation Structure (C4-Style)
 
 ```text
-docs/
-├── 01-context.md        # System context & business alignment
-├── 02-container.md      # Containers & runtime boundaries
-├── 03-component.md      # Internal component design
-├── 04-agents.md         # LangGraph & agent architecture
-├── 05-data.md           # Multimodal data & RAG strategy
-├── 06-governance.md     # Security, compliance, MLflow
-├── 07-industry.md       # Banking / Healthcare / Manufacturing
-├── 08-deployment.md     # Topology, sizing, scalability
-└── 09-proposal.md       # Client proposal & PPT mapping
+docs/architecture
+├── system-overview.md        # System context & business alignment
+├── langgraph-design.md       # LangGraph & agent architecture
+├── multimodal-processing.md  # multimodal processing design
+├── mcp-integration.md        # mcp integration design
+├── security-compliance.md    # Security, compliance, MLflow
+├── industry.md               # Banking / Healthcare / Manufacturing
+├── deployment.md             # Topology, sizing, scalability
+└── proposal.md               # Client proposal & PPT mapping
