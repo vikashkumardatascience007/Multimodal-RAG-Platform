@@ -7,7 +7,7 @@ Compatible with MCP, FastAPI, and LangGraph workflow.
 
 from typing import List
 from pydantic import BaseModel
-from retrieval.retrieval import RetrievalService, RetrievalRequest, RetrievalResponse
+from retrieval import RetrievalService, RetrievalRequest, RetrievalResponse
 from pathlib import Path
 import smtplib
 from email.message import EmailMessage
