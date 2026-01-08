@@ -1,0 +1,4 @@
+pdf_name,department,doc_type,pages,language,has_images,has_tables
+SBI-Directors Report_Contract_20260108_v1.pdf,Bank,Contract,64,English,Yes,Yes
+Finance_Invoice_20260107_v2.pdf,Finance,Invoice,5,German,No,Yes
+Tech_Manual_20260105_v1.pdf,Technical,Manual,30,English,Yes,Yes

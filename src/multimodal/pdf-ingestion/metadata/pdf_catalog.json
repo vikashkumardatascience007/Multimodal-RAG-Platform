@@ -1,0 +1,11 @@
+[
+    {
+        "pdf_name": "SBI-Directors Report_Contract_20260108_v1.pdf",
+        "category": "bank",
+        "path": "D:\\Vikash-github\\git-hub\\RAG Application\\Multimodal-RAG-Platform\\src\\multimodal\\pdf-ingestion\\raw_pdfs\\bank\\SBI-Directors Report_Contract_20260108_v1.pdf",
+        "ingestion_status": "COMPLETED",
+        "pages": 64,
+        "tables": 14,
+        "images": 188
+    }
+]
