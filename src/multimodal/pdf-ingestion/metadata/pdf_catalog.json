@@ -6,6 +6,7 @@
         "ingestion_status": "COMPLETED",
         "pages": 64,
         "tables": 14,
-        "images": 188
+        "images": 188,
+        "chunks": 199
     }
 ]

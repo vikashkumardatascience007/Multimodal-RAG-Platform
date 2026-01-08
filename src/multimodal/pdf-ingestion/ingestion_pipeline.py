@@ -1,9 +1,14 @@
 import json
 from pathlib import Path
-import fitz   
+import fitz  # PyMuPDF
 import pdfplumber
 from PIL import Image
 import pytesseract
+import uuid
+import tiktoken
+
+from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
 
 # -----------------------------
 # PATH CONFIGURATION
@@ -17,9 +22,20 @@ CATALOG_FILE = METADATA_DIR / "pdf_catalog.json"
 TEXT_DIR = PROCESSED_DIR / "text"
 TABLE_DIR = PROCESSED_DIR / "tables"
 IMAGE_DIR = PROCESSED_DIR / "images"
+CHUNK_DIR = PROCESSED_DIR / "chunks"
+VECTOR_DB_DIR = BASE_DIR / "vector_store" / "chroma"
 
-for d in [TEXT_DIR, TABLE_DIR, IMAGE_DIR, METADATA_DIR]:
+for d in [TEXT_DIR, TABLE_DIR, IMAGE_DIR, CHUNK_DIR, METADATA_DIR, VECTOR_DB_DIR]:
     d.mkdir(parents=True, exist_ok=True)
+
+# -----------------------------
+# EMBEDDING MODEL & TOKENIZER
+# -----------------------------
+embedding = HuggingFaceEmbeddings(
+    model_name="./all-MiniLM-L6-v2",
+    model_kwargs={"device": "cpu"}
+)
+tokenizer = tiktoken.get_encoding("cl100k_base")
 
 # -----------------------------
 # STEP 1: BUILD PDF CATALOG
@@ -44,7 +60,6 @@ def build_pdf_catalog():
 
     return records
 
-
 # -----------------------------
 # STEP 2: EXTRACTION FUNCTIONS
 # -----------------------------
@@ -60,13 +75,9 @@ def extract_text(pdf_path):
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
             text = pytesseract.image_to_string(img)
 
-        pages.append({
-            "page": page_num + 1,
-            "text": text
-        })
+        pages.append({"page": page_num + 1, "text": text})
 
     return pages
-
 
 def extract_tables(pdf_path):
     tables = []
@@ -82,7 +93,6 @@ def extract_tables(pdf_path):
                 })
 
     return tables
-
 
 def extract_images(pdf_path, pdf_name):
     images = []
@@ -111,9 +121,8 @@ def extract_images(pdf_path, pdf_name):
 
     return images
 
-
 # -----------------------------
-# STEP 2: PROCESS SINGLE PDF
+# STEP 2B: PROCESS SINGLE PDF
 # -----------------------------
 def process_pdf(record):
     pdf_path = record["path"]
@@ -123,17 +132,97 @@ def process_pdf(record):
     tables = extract_tables(pdf_path)
     images = extract_images(pdf_path, pdf_name)
 
+    # Save processed data
     with open(TEXT_DIR / f"{pdf_name}.json", "w", encoding="utf-8") as f:
         json.dump(text_pages, f, indent=4)
-
     with open(TABLE_DIR / f"{pdf_name}.json", "w", encoding="utf-8") as f:
         json.dump(tables, f, indent=4)
 
-    record["ingestion_status"] = "COMPLETED"
-    record["pages"] = len(text_pages)
-    record["tables"] = len(tables)
-    record["images"] = len(images)
+    record.update({
+        "ingestion_status": "COMPLETED",
+        "pages": len(text_pages),
+        "tables": len(tables),
+        "images": len(images)
+    })
 
+# -----------------------------
+# STEP 3: CHUNKING
+# -----------------------------
+def chunk_text(text, chunk_size=500, overlap=50):
+    tokens = tokenizer.encode(text)
+    chunks = []
+    start = 0
+    while start < len(tokens):
+        end = start + chunk_size
+        chunk_tokens = tokens[start:end]
+        chunks.append(tokenizer.decode(chunk_tokens))
+        start += chunk_size - overlap
+    return chunks
+
+def build_chunks(pdf_name):
+    chunk_records = []
+
+    # TEXT
+    with open(TEXT_DIR / f"{pdf_name}.json", "r", encoding="utf-8") as f:
+        pages = json.load(f)
+
+    for page in pages:
+        for chunk in chunk_text(page["text"]):
+            chunk_records.append({
+                "id": str(uuid.uuid4()),
+                "document": chunk,
+                "metadata": {"pdf_name": pdf_name, "type": "text", "page": page["page"]}
+            })
+
+    # TABLES
+    table_file = TABLE_DIR / f"{pdf_name}.json"
+    if table_file.exists():
+        with open(table_file, "r", encoding="utf-8") as f:
+            tables = json.load(f)
+
+        for table in tables:
+            table_text = "\n".join(
+                [
+                    " | ".join([str(cell).strip() if cell is not None else "" for cell in row])
+                    for row in table["rows"]
+                    if row and any(cell is not None for cell in row)
+                ]
+            )
+            chunk_records.append({
+                "id": str(uuid.uuid4()),
+                "document": table_text,
+                "metadata": {"pdf_name": pdf_name, "type": "table", "page": table["page"]}
+            })
+
+    with open(CHUNK_DIR / f"{pdf_name}.json", "w", encoding="utf-8") as f:
+        json.dump(chunk_records, f, indent=4)
+
+    print(f"[DEBUG] {len(chunk_records)} chunks built for {pdf_name}")
+    return chunk_records
+
+# -----------------------------
+# STEP 4: STORE CHUNKS IN LANGCHAIN CHROMA
+# -----------------------------
+def store_chunks_in_chroma(chunks):
+    if not chunks:
+        print("[WARNING] No chunks to add.")
+        return
+
+    texts = [c["document"] for c in chunks]
+    metadatas = [c["metadata"] for c in chunks]
+
+    # LangChain Chroma vectorstore
+    vectordb = Chroma.from_texts(
+        texts=texts,
+        embedding=embedding,
+        metadatas=metadatas,
+        persist_directory=str(VECTOR_DB_DIR),
+        collection_name="enterprise_rag_documents"
+    )
+
+    # Persist is automatic
+    vectordb.persist()
+    print(f"[DEBUG] {len(chunks)} chunks stored in LangChain Chroma DB.")
 
 # -----------------------------
 # PIPELINE ORCHESTRATOR
@@ -144,14 +233,18 @@ def run_pipeline():
     for record in records:
         if record["ingestion_status"] == "PENDING":
             process_pdf(record)
+            pdf_name = Path(record["pdf_name"]).stem
+            chunks = build_chunks(pdf_name)
+            store_chunks_in_chroma(chunks)
+            record["chunks"] = len(chunks)
+            record["ingestion_status"] = "COMPLETED"
 
     with open(CATALOG_FILE, "w", encoding="utf-8") as f:
         json.dump(records, f, indent=4)
-
 
 # -----------------------------
 # ENTRY POINT
 # -----------------------------
 if __name__ == "__main__":
     run_pipeline()
-    print("Step 1 & Step 2 completed successfully.")
+    print("Step 1, 2 & 3 completed successfully.")
