@@ -20,6 +20,7 @@ from ..retrieval_mode.email_agent import send_email_notification
 from ..retrieval_mode.mlflow_logger import log_rag_interaction
 
 
+RELEVANCE_THRESHOLD = 0.35
 # ---------------- Configuration ----------------
 BASE_DIR = Path(__file__).resolve().parent.parent
 LOCAL_EMBEDDING_MODEL_PATH = "./all-MiniLM-L6-v2"
@@ -45,6 +46,8 @@ class RetrievalState(BaseModel):
     query: str
     top_k: int
     documents: List[Document] = []
+    no_relevant_docs: bool = False
+
 
 
 # ---------------- Vector Store ----------------
@@ -61,26 +64,23 @@ vector_db = Chroma(
 
 # ---------------- LangGraph Node ----------------
 def retrieval_node(state: RetrievalState) -> RetrievalState:
-    results = vector_db.similarity_search(
+    results = vector_db.similarity_search_with_score(
         query=state.query,
         k=state.top_k
     )
 
-    docs: List[Document] = []
-    for r in results:
-        if isinstance(r, Document):
-            docs.append(r)
-        elif isinstance(r, dict):
-            docs.append(
-                Document(
-                    page_content=r.get("document") or r.get("page_content") or "",
-                    metadata=r.get("metadata", {})
-                )
-            )
-        else:
-            docs.append(Document(page_content=str(r)))
+    relevant_docs = []
 
-    state.documents = docs
+    print("\n[DEBUG] Retrieval scores:")
+    for doc, score in results:
+        print(f"Score: {score:.4f} | Preview: {doc.page_content[:120]}")
+
+        if score <= RELEVANCE_THRESHOLD:
+            relevant_docs.append(doc)
+
+    state.documents = relevant_docs
+    state.no_relevant_docs = len(relevant_docs) == 0
+    print(state.no_relevant_docs,'******************', state.documents)
     return state
 
 
