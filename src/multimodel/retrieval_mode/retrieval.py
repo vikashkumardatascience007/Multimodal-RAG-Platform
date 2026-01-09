@@ -15,9 +15,9 @@ from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
-from importance_agent import detect_important_information
-from email_agent import send_email_notification
-from mlflow_logger import log_rag_interaction
+from ..retrieval_mode.importance_agent import detect_important_information
+from ..retrieval_mode.email_agent import send_email_notification
+from ..retrieval_mode.mlflow_logger import log_rag_interaction
 
 
 # ---------------- Configuration ----------------
