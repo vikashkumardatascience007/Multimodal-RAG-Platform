@@ -11,6 +11,9 @@ from ..retrieval_mode.email_agent import send_email_notification
 from ..retrieval_mode.mlflow_logger import log_rag_interaction
 from langgraph.graph import StateGraph, END
 
+from ..pdf_ingestion.vision.vision_agent import vision_agent_enrich
+
+
 class SupervisorState(BaseModel):
     query: str
     top_k: int
@@ -45,6 +48,11 @@ def image_agent_node(state: SupervisorState) -> SupervisorState:
         for doc in state.documents
     )
     return state
+
+def vision_agent_node(state: SupervisorState) -> SupervisorState:
+    state.documents = vision_agent_enrich(state.documents)
+    return state
+
 
 
 def audit_and_notify_agent(state: SupervisorState) -> SupervisorState:
@@ -82,13 +90,15 @@ def build_supervisor_graph():
     graph = StateGraph(SupervisorState)
 
     graph.add_node("retrieve", retrieval_agent)
+    graph.add_node("vision", vision_agent_node)
     graph.add_node("importance", importance_agent_node)
     graph.add_node("image_check", image_agent_node)
     graph.add_node("audit_notify", audit_and_notify_agent)
 
     graph.set_entry_point("retrieve")
 
-    graph.add_edge("retrieve", "importance")
+    graph.add_edge("retrieve", "vision")
+    graph.add_edge("vision", "importance")
     graph.add_edge("importance", "image_check")
     graph.add_edge("image_check", "audit_notify")
     graph.add_edge("audit_notify", END)

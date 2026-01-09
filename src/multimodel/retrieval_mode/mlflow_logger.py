@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 
 mlflow.set_tracking_uri("http://127.0.0.1:5006")
-mlflow.set_experiment("Enterprise-RAG-PDF-123")
+mlflow.set_experiment("Enterprise-RAG-PDF-latest-2334")
 
 def log_rag_interaction(
     query: str,

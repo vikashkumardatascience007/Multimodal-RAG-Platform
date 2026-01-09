@@ -21,6 +21,12 @@ import tiktoken
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
+from vision.image_embedder import build_image_documents
+from vision.vision_agent import vision_agent_enrich
+from langchain_community.vectorstores import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+
+
 # ---------------- Directories ----------------
 BASE_DIR = Path(__file__).parent
 # points to src/
@@ -107,6 +113,37 @@ def extract_images(pdf_path, pdf_name):
                 "path": str(image_path)
             })
     return images
+
+def ingest_image_embeddings(pdf_name: str):
+    """
+    One-time image understanding + embedding into Chroma.
+    Called during ingestion only.
+    """
+    image_dir = IMAGE_DIR
+
+    embedding = HuggingFaceEmbeddings(
+        model_name="./all-MiniLM-L6-v2"
+    )
+
+    vectordb = Chroma(
+        persist_directory=str(BASE_DIR / "vector_store" / "chroma"),
+        collection_name="enterprise_rag_documents",
+        embedding_function=embedding
+    )
+
+    # Build image documents
+    image_docs = build_image_documents(image_dir, pdf_name)
+
+    if not image_docs:
+        return
+
+    # Enrich with OCR / captions
+    enriched_docs = vision_agent_enrich(image_docs)
+
+    vectordb.add_documents(enriched_docs)
+    vectordb.persist()
+    print('images also ingected')
+
 
 # ---------------- Step 2B: Process Single PDF ----------------
 def process_pdf(record):
@@ -209,6 +246,7 @@ def run_pipeline():
             pdf_name = Path(record["pdf_name"]).stem
             chunks = build_chunks(pdf_name)
             store_chunks_in_chroma(chunks)
+            ingest_image_embeddings(pdf_name)
             record["chunks"] = len(chunks)
             record["ingestion_status"] = "COMPLETED"
 
@@ -219,4 +257,4 @@ def run_pipeline():
 # ---------------- Entry Point ----------------
 if __name__ == "__main__":
     run_pipeline()
-    print("✅ PDF ingestion completed successfully.")
+    print("PDF and images ingestion completed successfully.")
